@@ -1,0 +1,219 @@
+{
+  "app": {
+    "name": "ShiftFix",
+    "skip": "Skip to content"
+  },
+  "nav": {
+    "home": "Home",
+    "workers": "Workers",
+    "language": "Language"
+  },
+  "language": {
+    "nl": "Nederlands",
+    "fr": "Français",
+    "en": "English"
+  },
+  "home": {
+    "title": "Home",
+    "tabNow": "On shift now",
+    "tabCalendar": "Calendar",
+    "until": "until {{time}}",
+    "emptyNow": "Nobody is on shift right now",
+    "markAbsent": "Mark absent",
+    "openShifts": "{{count}} open shifts today",
+    "openShifts_one": "1 open shift today",
+    "findReplacement": "Find replacement",
+    "today": "Today",
+    "previous": "Previous",
+    "next": "Next",
+    "open": "Open",
+    "weekOf": "Week of {{date}}"
+  },
+  "absence": {
+    "title": "Mark absent",
+    "intro": "Overlapping scheduled shifts become open. No reason is stored.",
+    "type": "Type",
+    "starts": "Starts",
+    "ends": "Ends",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "endAfterStart": "End must be after start",
+    "noneAffected": "No shifts affected",
+    "saved": "Absence recorded"
+  },
+  "absenceType": {
+    "sick": "Sick",
+    "vacation": "Vacation",
+    "unavailable": "Unavailable"
+  },
+  "shiftStatus": {
+    "scheduled": "Scheduled",
+    "open": "Open",
+    "cancelled": "Cancelled"
+  },
+  "replacements": {
+    "title": "Replacements",
+    "back": "Back",
+    "absent": "Absent: {{name}}",
+    "sendTop3": "Send to top 3",
+    "contact": "Contact",
+    "showContact": "Show contact info",
+    "hideContact": "Hide contact info",
+    "preferred": "Preferred",
+    "score": "Score {{score}}",
+    "sent": "Sent {{time}}",
+    "replied": "Replied {{time}}",
+    "empty": "No eligible workers",
+    "everyoneContacted": "Everyone eligible has been contacted",
+    "excluded": "Not eligible ({{count}})",
+    "wave": "Wave {{wave}} – {{count}} offers pending",
+    "filled": "{{from}} → {{to}}",
+    "filledUnknown": "Filled by {{name}}",
+    "filledTitle": "Shift filled",
+    "offersSent": "Offers sent",
+    "readOnly": "This shift is filled. No further offers can be sent."
+  },
+  "offerStatus": {
+    "pending": "Pending",
+    "accepted": "Accepted",
+    "declined": "Declined",
+    "expired": "Expired",
+    "cancelled": "Cancelled"
+  },
+  "rules": {
+    "qualification": "Missing or expired qualification",
+    "availability": "Absent during this shift",
+    "no_overlap": "Already scheduled at this time",
+    "min_rest": "Not enough rest since last shift",
+    "max_daily": "Would exceed the daily hour limit",
+    "max_weekly": "Would exceed the weekly hour limit",
+    "student_quota": "Would exceed the student hour quota",
+    "unknown": "Not eligible"
+  },
+  "channel": {
+    "telegram": "Telegram",
+    "sms": "SMS",
+    "whatsapp": "WhatsApp",
+    "email": "Email",
+    "phone": "Phone"
+  },
+  "workers": {
+    "title": "Workers",
+    "search": "Search by name",
+    "searchLabel": "Search workers",
+    "empty": "No workers match",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "history": "History",
+    "saved": "Worker saved",
+    "deactivateTitle": "Deactivate worker",
+    "deactivateBody": "{{name}} will no longer be suggested as a replacement.",
+    "deactivateConfirm": "Deactivate",
+    "unsaved": "You have unsaved changes. Leave this page?",
+    "hoursPerWeek": "{{hours}} h/week",
+    "workedThisWeek": "Worked this week",
+    "hourlyRate": "Hourly rate",
+    "priority": "Priority",
+    "priorityHint": "Used only to rank candidates",
+    "language": "Language",
+    "contract": "Contract",
+    "contractHours": "Hours per week",
+    "active": "Active",
+    "studentHours": "Student hours at other employers (this year)",
+    "qualifications": "Qualifications",
+    "expires": "Expires",
+    "neverExpires": "No expiry",
+    "channels": "Contact channels",
+    "address": "Address",
+    "addQualification": "Add qualification",
+    "addChannel": "Add channel",
+    "remove": "Remove",
+    "firstName": "First name",
+    "lastName": "Last name"
+  },
+  "contract": {
+    "full_time": "Full-time",
+    "part_time": "Part-time",
+    "student": "Student"
+  },
+  "qualifications": {
+    "cashier": "Cashier",
+    "bakery": "Bakery",
+    "barista": "Barista",
+    "forklift": "Forklift",
+    "first_aid": "First aid",
+    "floor": "Floor"
+  },
+  "history": {
+    "title": "History",
+    "back": "Back to workers",
+    "empty": "No history yet",
+    "shiftLink": "Shift #{{id}}"
+  },
+  "actor": {
+    "manager": "Manager",
+    "system": "System",
+    "bot": "Bot",
+    "worker": "Worker #{{id}}"
+  },
+  "action": {
+    "absence_reported": "Absence reported",
+    "shift_opened": "Shift opened",
+    "offer_sent": "Offer sent",
+    "offer_declined": "Offer declined",
+    "offer_accepted": "Offer accepted",
+    "shift_assigned": "Shift assigned",
+    "assignment_rejected": "Assignment rejected",
+    "worker_updated": "Worker updated",
+    "unknown": "Update"
+  },
+  "fields": {
+    "firstName": "First name",
+    "lastName": "Last name",
+    "contractType": "Contract",
+    "contractHoursPerWeek": "Hours per week",
+    "hourlyRateCents": "Hourly rate",
+    "priorityFactor": "Priority",
+    "language": "Language",
+    "studentHoursExternalYtd": "Student hours elsewhere",
+    "isActive": "Active",
+    "qualifications": "Qualifications",
+    "contactChannels": "Contact channels",
+    "unknown": "Field"
+  },
+  "errors": {
+    "SHIFT_NOT_OPEN": "This shift is no longer open",
+    "ALREADY_OFFERED": "This person was already offered this shift",
+    "NOT_ELIGIBLE": "This person is not eligible for the shift",
+    "NO_CANDIDATES_LEFT": "Everyone eligible has been contacted",
+    "CHANNEL_UNAVAILABLE": "No preferred contact channel. Use contact info to reach them.",
+    "WORKER_NOT_FOUND": "Worker not found",
+    "SHIFT_NOT_FOUND": "Shift not found",
+    "VALIDATION_ERROR": "Some values are not valid",
+    "generic": "Something went wrong. Try again.",
+    "offline": "Connection lost – retrying"
+  },
+  "validation": {
+    "required": "Required",
+    "priority": "Priority is a whole number from 0 to 3",
+    "nonNegative": "Must not be negative",
+    "hours": "Hours must be greater than 0",
+    "duplicateQualification": "Each qualification can only be added once",
+    "duplicateChannel": "Only one channel of each type",
+    "onePreferred": "Only one channel can be preferred",
+    "studentOnly": "Student hours can only be edited for student contracts"
+  },
+  "common": {
+    "loadMore": "Load more",
+    "loading": "Loading",
+    "retry": "Retry",
+    "close": "Close",
+    "yes": "Yes",
+    "no": "No",
+    "notFound": "Page not found",
+    "notFoundBody": "That page does not exist.",
+    "goHome": "Go to Home",
+    "hoursShort": "{{hours}} h"
+  }
+}
