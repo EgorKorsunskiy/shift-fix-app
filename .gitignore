@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Local data & secrets
+*.db
+*.db-wal
+*.db-shm
+.env
+
+# OS
+.DS_Store

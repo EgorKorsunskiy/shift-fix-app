@@ -1,0 +1,10 @@
+{
+  "version": "2026-10-19.1",
+  "timezone": "Europe/Brussels",
+  "min_rest_hours": 11,
+  "max_daily_hours": 9,
+  "weekly_max_hours": { "full_time": 40, "student": 20 },
+  "part_time_max_over_contract_hours": 4,
+  "absolute_weekly_max_hours": 48,
+  "student_yearly_quota_hours": 650
+}

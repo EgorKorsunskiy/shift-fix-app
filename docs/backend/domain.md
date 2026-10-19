@@ -255,7 +255,7 @@ CREATE INDEX ix_audit_shift ON audit_event(shift_id);
 
 ## Labour rules config (a file, not a table)
 
-The rules live in `rules.json`, versioned in git. Its `version` is copied into every `shift_assigned` audit payload. The values are a **team-defined simplification**, to be confirmed before the demo.
+The rules live in `backend/app/rules.json`, versioned in git. A test fails if that file differs from the block below. Its `version` is copied into every `shift_assigned` audit payload. The values are a **team-defined simplification**, to be confirmed before the demo.
 
 ```json
 {
@@ -274,10 +274,10 @@ The rules live in `rules.json`, versioned in git. Its `version` is copied into e
 
 **Worked or planned hours in a window** for a worker, per interval:
 - A `scheduled` shift that has a `time_entry` → use the time entry.
-- A future `scheduled` shift with no `time_entry` → use the shift's planned interval.
+- A `scheduled` shift with no `time_entry` → use the shift's planned interval. This applies to past shifts too, including one in progress or one whose time entry is not recorded yet: a missing time entry must never make someone look less busy.
 - A `time_entry` with `shift_id IS NULL` (ad-hoc work) → use it as is.
 
-Intervals are clipped to the window, and day and week boundaries are taken in `Europe/Brussels`. This avoids counting the same work twice.
+Intervals are clipped to the window, and day and week boundaries are taken in `Europe/Brussels`. This avoids counting the same work twice. All hour arithmetic happens in UTC: subtracting two datetimes that share a timezone object ignores DST, which would lose the extra hour of the DST week.
 
 **Student YTD hours** = `student_hours_external_ytd` + the hours above for the current calendar year.
 
@@ -287,21 +287,33 @@ Intervals are clipped to the window, and day and week boundaries are taken in `E
 
 | rule | reads |
 |---|---|
-| `qualification` | `worker_qualification` for the shift's qualification, with `valid_until` NULL or ≥ the shift's local date |
+| `qualification` | `worker_qualification` for the shift's qualification, with `valid_until` NULL or ≥ the local date the shift **ends** on |
 | `availability` | `absence` overlapping the shift |
 | `no_overlap` | the worker's `scheduled` shifts overlapping the shift |
-| `min_rest` | the worker's adjacent `shift` and `time_entry` intervals vs `min_rest_hours` |
+| `min_rest` | no derived work interval within `min_rest_hours` before the shift's start or after its end |
 | `max_daily` | hours on the local day + the shift vs `max_daily_hours` |
-| `max_weekly` | hours in the ISO week + the shift vs the limit for the contract type (`contract_hours_per_week` + allowed extra for part-timers) |
+| `max_weekly` | hours in the ISO week + the shift vs the contract-type limit: full-time and student from `weekly_max_hours`; part-time is `contract_hours_per_week` + `part_time_max_over_contract_hours`. The limit is never above `absolute_weekly_max_hours`. |
 | `student_quota` | `contract_type = 'student'`, student YTD hours + the shift vs `student_yearly_quota_hours` |
 
-## Ranking inputs (soft, applied after the hard filter)
+**How the rules are evaluated** (implementation: `backend/app/rules.py`)
+- **Only active workers are considered.** Each one ends up either among the candidates or among the exclusions.
+- **Every rule is evaluated** for every worker. An exclusion therefore lists all the rules the worker fails, not just the first one.
+- **Limits are inclusive.** Reaching a cap exactly is allowed, and exactly 11h of rest is enough. One minute over fails.
+- **A shift that crosses local midnight, a week boundary or a year boundary** is checked against every local day, ISO week and year it touches.
 
-- `priority_factor`: higher ranks first.
-- `hourly_rate_cents`: cheaper ranks first, plus the remaining contract hours this week.
-- `worker_preference`: windows marked `prefer` and `avoid`.
-- Fairness: the number of `accepted` offers in the last 30 days (fewer ranks first).
-- Reachability: whether the worker has a preferred `contact_channel`.
+## Ranking (soft, applied after the hard filter)
+
+Ranking only orders eligible candidates; it never filters anyone out. Each component is in [0, 1]. The score is the weighted sum in points out of 100, rounded half up to an integer. Implementation: `backend/app/ranking.py`.
+
+| component | weight | value |
+|---|---|---|
+| priority | 40 | `priority_factor / 3` |
+| contract hours | 20 | share of the shift that fits in the worker's remaining `contract_hours_per_week` for the shift's week (0..1) |
+| cost | 15 | `hourly_rate_cents` relative to the eligible candidates: 1 for the cheapest, 0 for the most expensive, 1 if all are equal |
+| preferences | 15 | 0 if the shift touches an `avoid` window; 1 if it lies fully inside `prefer` windows; 0.75 if it only partly overlaps them; 0.5 if no window applies |
+| fairness | 10 | `1 / (1 + accepted offers in the last 30 days)` |
+
+Ties are broken in this order: workers with a preferred `contact_channel` (reachability) first, then last name, first name and id.
 
 ## Lifecycle: "07:00 sick, shift at 09:00"
 
