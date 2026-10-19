@@ -1,0 +1,570 @@
+openapi: 3.0.3
+info:
+  title: ShiftFix API
+  version: 0.5.0
+  description: |
+    Find replacements for shifts when the scheduled worker is unavailable.
+    Field meanings and enum values follow docs/backend/domain.md.
+    Timestamps are UTC with minute precision: `YYYY-MM-DDTHH:MMZ`.
+    All list endpoints use cursor pagination: `?limit=20&cursor=abc` -> `{ items, nextCursor }`.
+servers:
+  - url: /api/v1
+
+paths:
+  # ---------- Home ----------
+  /shifts/current:
+    get:
+      summary: Scheduled shifts in progress right now (Home, tab 1)
+      parameters: [ { $ref: "#/components/parameters/Limit" }, { $ref: "#/components/parameters/Cursor" } ]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CurrentShiftPage" }
+              example:
+                items:
+                  - { shiftId: 101, workerId: 1, firstName: Anna, lastName: Peeters, qualification: { code: barista, name: Barista }, endsAt: "2026-10-19T16:00Z" }
+                nextCursor: null
+
+  /shifts:
+    get:
+      summary: Shifts overlapping [from, to) (Home, tab 2 calendar)
+      parameters:
+        - { name: from, in: query, required: true, schema: { $ref: "#/components/schemas/Timestamp" } }
+        - { name: to,   in: query, required: true, schema: { $ref: "#/components/schemas/Timestamp" } }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CalendarShiftPage" }
+              example:
+                items:
+                  - { shiftId: 101, status: scheduled, workerId: 1, firstName: Anna, lastName: Peeters, startsAt: "2026-10-19T08:00Z", endsAt: "2026-10-19T16:00Z" }
+                  - { shiftId: 102, status: open, workerId: null, firstName: null, lastName: null, startsAt: "2026-10-20T07:00Z", endsAt: "2026-10-20T15:00Z" }
+                nextCursor: null
+        "422": { $ref: "#/components/responses/Error" }   # VALIDATION_ERROR
+
+  # ---------- Absences ----------
+  /absences:
+    post:
+      summary: Mark a worker absent; their overlapping scheduled shifts become open
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AbsenceCreate" }
+            example: { workerId: 1, type: sick, startsAt: "2026-10-20T05:00Z", endsAt: "2026-10-20T22:00Z" }
+      responses:
+        "201":
+          description: Absence recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AbsenceCreated" }
+              example: { absenceId: 12, openedShiftIds: [102] }
+        "404": { $ref: "#/components/responses/Error" }   # WORKER_NOT_FOUND
+        "422": { $ref: "#/components/responses/Error" }   # VALIDATION_ERROR
+
+  # ---------- Replacements ----------
+  /shifts/{shiftId}:
+    get:
+      summary: Shift header (Replacements page)
+      parameters: [ { $ref: "#/components/parameters/ShiftId" } ]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShiftDetail" }
+              example:
+                { shiftId: 102, status: open, workerId: null, firstName: null, lastName: null, qualification: { code: barista, name: Barista }, startsAt: "2026-10-20T07:00Z", endsAt: "2026-10-20T15:00Z" }
+        "404": { $ref: "#/components/responses/Error" }   # SHIFT_NOT_FOUND
+
+  /shifts/{shiftId}/replacements:
+    get:
+      summary: Workers who pass every hard rule, sorted by score, best first
+      parameters:
+        - { $ref: "#/components/parameters/ShiftId" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CandidatePage" }
+              example:
+                items:
+                  - { workerId: 7, firstName: Jonas, lastName: Willems, score: 87, offerStatus: null }
+                  - { workerId: 3, firstName: Mila, lastName: Claes, score: 74, offerStatus: pending }
+                nextCursor: null
+        "404": { $ref: "#/components/responses/Error" }   # SHIFT_NOT_FOUND
+        "409": { $ref: "#/components/responses/Error" }   # SHIFT_NOT_OPEN
+
+  /shifts/{shiftId}/exclusions:
+    get:
+      summary: Active workers who fail at least one hard rule, with the failed rules
+      parameters:
+        - { $ref: "#/components/parameters/ShiftId" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExclusionPage" }
+              example:
+                items:
+                  - { workerId: 9, firstName: Lotte, lastName: Janssens, failedRules: [min_rest] }
+                  - { workerId: 4, firstName: Tom, lastName: Dubois, failedRules: [qualification, max_weekly] }
+                nextCursor: null
+        "404": { $ref: "#/components/responses/Error" }   # SHIFT_NOT_FOUND
+        "409": { $ref: "#/components/responses/Error" }   # SHIFT_NOT_OPEN
+
+  /shifts/{shiftId}/offers:
+    get:
+      summary: Offers sent for this shift (poll after sending)
+      parameters:
+        - { $ref: "#/components/parameters/ShiftId" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OfferPage" }
+              example:
+                items:
+                  - { offerId: 31, workerId: 7, wave: 1, status: accepted, sentAt: "2026-10-20T07:05Z", respondedAt: "2026-10-20T07:09Z" }
+                  - { offerId: 32, workerId: 3, wave: 1, status: cancelled, sentAt: "2026-10-20T07:05Z", respondedAt: null }
+                nextCursor: null
+        "404": { $ref: "#/components/responses/Error" }   # SHIFT_NOT_FOUND
+    post:
+      summary: Send the next wave of offers ("Send offers" button)
+      description: |
+        Without a body: the top 3 ranked candidates not yet offered this shift.
+        With `workerIds`: exactly those workers; each must be a current candidate.
+        Offers go via the worker's preferred contact channel, in the worker's language.
+        When a whole wave is declined or expired, the backend starts the next wave itself.
+        Acceptance happens in Telegram; the backend re-checks all rules and assigns in one transaction (no confirm call).
+      parameters: [ { $ref: "#/components/parameters/ShiftId" } ]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OfferRequest" }
+            example: { workerIds: [7] }
+      responses:
+        "201":
+          description: Wave sent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OfferWave" }
+              example: { wave: 1, offers: [ { offerId: 31, workerId: 7, status: pending } ] }
+        "404": { $ref: "#/components/responses/Error" }   # SHIFT_NOT_FOUND, WORKER_NOT_FOUND
+        "409": { $ref: "#/components/responses/Error" }   # SHIFT_NOT_OPEN, ALREADY_OFFERED
+        "422": { $ref: "#/components/responses/Error" }   # NOT_ELIGIBLE, NO_CANDIDATES_LEFT, CHANNEL_UNAVAILABLE
+
+  /workers/{workerId}/contact-info:
+    get:
+      summary: Contact details ("Show contact info" button)
+      parameters: [ { $ref: "#/components/parameters/WorkerId" } ]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContactInfo" }
+              example:
+                channels:
+                  - { type: telegram, address: "123456789", isPreferred: true }
+                  - { type: phone, address: "+32470123456", isPreferred: false }
+        "404": { $ref: "#/components/responses/Error" }   # WORKER_NOT_FOUND
+
+  # ---------- Workers ----------
+  /workers:
+    get:
+      summary: Paginated list of active workers with search (Workers page)
+      parameters:
+        - name: search
+          in: query
+          description: Case-insensitive partial match on first or last name. Omit for the full list.
+          schema: { type: string }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkerRowPage" }
+              example:
+                items:
+                  - { workerId: 7, firstName: Jonas, lastName: Willems, contractType: part_time, qualifications: [ { code: barista, name: Barista } ] }
+                nextCursor: abc
+
+  /workers/{workerId}:
+    get:
+      summary: Worker details (fetched when a row is expanded)
+      parameters: [ { $ref: "#/components/parameters/WorkerId" } ]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkerDetail" }
+              example:
+                workerId: 7
+                firstName: Jonas
+                lastName: Willems
+                contractType: part_time
+                contractHoursPerWeek: 32
+                hourlyRateCents: 1650
+                priorityFactor: 2
+                language: nl
+                studentHoursExternalYtd: 0
+                isActive: true
+                qualifications:
+                  - { code: barista, name: Barista, validUntil: null }
+                  - { code: first_aid, name: First aid, validUntil: "2027-03-31" }
+                contactChannels:
+                  - { type: telegram, address: "123456789", isPreferred: true }
+                workedHoursThisWeek: 22
+        "404": { $ref: "#/components/responses/Error" }   # WORKER_NOT_FOUND
+    patch:
+      summary: Edit worker; the change is written to the worker's history
+      description: Send only the fields that change. A list you send replaces the stored list.
+      parameters: [ { $ref: "#/components/parameters/WorkerId" } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkerUpdate" }
+            example: { hourlyRateCents: 1750, priorityFactor: 3 }
+      responses:
+        "200":
+          description: Saved; returns the updated worker
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkerDetail" }
+        "404": { $ref: "#/components/responses/Error" }   # WORKER_NOT_FOUND
+        "422": { $ref: "#/components/responses/Error" }   # VALIDATION_ERROR
+
+  # ---------- History ----------
+  /workers/{workerId}/history:
+    get:
+      summary: The worker's audit-log entries, newest first (History page)
+      parameters:
+        - { $ref: "#/components/parameters/WorkerId" }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HistoryPage" }
+              example:
+                items:
+                  - occurredAt: "2026-10-19T09:12Z"
+                    actor: manager
+                    action: worker_updated
+                    shiftId: null
+                    changes:
+                      - { field: hourlyRateCents, from: 1650, to: 1750 }
+                      - { field: priorityFactor, from: 2, to: 3 }
+                  - { occurredAt: "2026-10-19T07:09Z", actor: "worker:7", action: offer_accepted, shiftId: 102, changes: null }
+                nextCursor: abc
+        "404": { $ref: "#/components/responses/Error" }   # WORKER_NOT_FOUND
+
+components:
+  parameters:
+    ShiftId:  { name: shiftId,  in: path, required: true, schema: { type: integer } }
+    WorkerId: { name: workerId, in: path, required: true, schema: { type: integer } }
+    Limit:    { name: limit,    in: query, schema: { type: integer, default: 20, minimum: 1, maximum: 100 } }
+    Cursor:   { name: cursor,   in: query, description: "nextCursor from the previous page", schema: { type: string } }
+
+  responses:
+    Error:
+      description: Error (HTTP status + code)
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error: { type: string, example: SHIFT_NOT_FOUND }
+
+  schemas:
+    # ----- scalars & enums (values as in domain.md) -----
+    Timestamp:
+      type: string
+      description: UTC, minute precision
+      pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z$'
+      example: "2026-10-20T07:00Z"
+    ContractType: { type: string, enum: [full_time, part_time, student] }
+    Language:     { type: string, enum: [nl, fr, en] }
+    ChannelType:  { type: string, enum: [telegram, sms, whatsapp, email, phone] }
+    ShiftStatus:  { type: string, enum: [scheduled, open, cancelled] }
+    AbsenceType:  { type: string, enum: [sick, vacation, unavailable] }
+    OfferStatus:  { type: string, enum: [pending, accepted, declined, expired, cancelled] }
+    RuleId:
+      type: string
+      enum: [qualification, availability, no_overlap, min_rest, max_daily, max_weekly, student_quota]
+    AuditAction:
+      type: string
+      enum: [absence_reported, shift_opened, offer_sent, offer_declined, offer_accepted, shift_assigned, assignment_rejected, worker_updated]
+
+    # ----- shared objects -----
+    QualificationRef:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string }
+        name: { type: string }
+    WorkerQualification:
+      allOf:
+        - $ref: "#/components/schemas/QualificationRef"
+        - type: object
+          required: [validUntil]
+          properties:
+            validUntil: { type: string, format: date, nullable: true, description: "Certificate expiry; null = never expires" }
+    QualificationAssignment:
+      type: object
+      required: [code]
+      properties:
+        code:       { type: string }
+        validUntil: { type: string, format: date, nullable: true }
+    ContactChannel:
+      type: object
+      required: [type, address, isPreferred]
+      properties:
+        type:        { $ref: "#/components/schemas/ChannelType" }
+        address:     { type: string, description: "Telegram chat_id, E.164 phone number or email" }
+        isPreferred: { type: boolean }
+
+    # ----- page wrappers -----
+    CurrentShiftPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/CurrentShift" } }
+        nextCursor: { type: string, nullable: true }
+    CalendarShiftPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/CalendarShift" } }
+        nextCursor: { type: string, nullable: true }
+    CandidatePage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Candidate" } }
+        nextCursor: { type: string, nullable: true }
+    ExclusionPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Exclusion" } }
+        nextCursor: { type: string, nullable: true }
+    OfferPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Offer" } }
+        nextCursor: { type: string, nullable: true }
+    WorkerRowPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/WorkerRow" } }
+        nextCursor: { type: string, nullable: true }
+    HistoryPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/HistoryEntry" } }
+        nextCursor: { type: string, nullable: true }
+
+    # ----- items -----
+    CurrentShift:
+      type: object
+      required: [shiftId, workerId, firstName, lastName, qualification, endsAt]
+      properties:
+        shiftId:       { type: integer }
+        workerId:      { type: integer }
+        firstName:     { type: string }
+        lastName:      { type: string }
+        qualification: { $ref: "#/components/schemas/QualificationRef" }
+        endsAt:        { $ref: "#/components/schemas/Timestamp" }
+
+    CalendarShift:
+      type: object
+      required: [shiftId, status, workerId, firstName, lastName, startsAt, endsAt]
+      description: workerId, firstName and lastName are null while the shift is open.
+      properties:
+        shiftId:   { type: integer }
+        status:    { $ref: "#/components/schemas/ShiftStatus" }
+        workerId:  { type: integer, nullable: true }
+        firstName: { type: string, nullable: true }
+        lastName:  { type: string, nullable: true }
+        startsAt:  { $ref: "#/components/schemas/Timestamp" }
+        endsAt:    { $ref: "#/components/schemas/Timestamp" }
+
+    ShiftDetail:
+      allOf:
+        - $ref: "#/components/schemas/CalendarShift"
+        - type: object
+          required: [qualification]
+          properties:
+            qualification: { $ref: "#/components/schemas/QualificationRef" }
+
+    Candidate:
+      type: object
+      required: [workerId, firstName, lastName, score, offerStatus]
+      properties:
+        workerId:    { type: integer }
+        firstName:   { type: string }
+        lastName:    { type: string }
+        score:       { type: integer, minimum: 0, maximum: 100 }
+        offerStatus:
+          allOf: [ { $ref: "#/components/schemas/OfferStatus" } ]
+          nullable: true
+          description: null = not offered this shift yet
+
+    Exclusion:
+      type: object
+      required: [workerId, firstName, lastName, failedRules]
+      properties:
+        workerId:    { type: integer }
+        firstName:   { type: string }
+        lastName:    { type: string }
+        failedRules: { type: array, minItems: 1, items: { $ref: "#/components/schemas/RuleId" } }
+
+    AbsenceCreate:
+      type: object
+      required: [workerId, type, startsAt, endsAt]
+      additionalProperties: false
+      properties:
+        workerId: { type: integer }
+        type:     { $ref: "#/components/schemas/AbsenceType" }
+        startsAt: { $ref: "#/components/schemas/Timestamp" }
+        endsAt:   { $ref: "#/components/schemas/Timestamp" }
+
+    AbsenceCreated:
+      type: object
+      required: [absenceId, openedShiftIds]
+      properties:
+        absenceId:      { type: integer }
+        openedShiftIds: { type: array, items: { type: integer } }
+
+    OfferRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        workerIds: { type: array, minItems: 1, items: { type: integer } }
+
+    OfferWave:
+      type: object
+      required: [wave, offers]
+      properties:
+        wave: { type: integer, minimum: 1 }
+        offers:
+          type: array
+          items:
+            type: object
+            required: [offerId, workerId, status]
+            properties:
+              offerId:  { type: integer }
+              workerId: { type: integer }
+              status:   { $ref: "#/components/schemas/OfferStatus" }
+
+    Offer:
+      type: object
+      required: [offerId, workerId, wave, status, sentAt, respondedAt]
+      properties:
+        offerId:     { type: integer }
+        workerId:    { type: integer }
+        wave:        { type: integer, minimum: 1 }
+        status:      { $ref: "#/components/schemas/OfferStatus" }
+        sentAt:      { $ref: "#/components/schemas/Timestamp" }
+        respondedAt:
+          allOf: [ { $ref: "#/components/schemas/Timestamp" } ]
+          nullable: true
+
+    ContactInfo:
+      type: object
+      required: [channels]
+      properties:
+        channels: { type: array, items: { $ref: "#/components/schemas/ContactChannel" } }
+
+    WorkerRow:
+      type: object
+      required: [workerId, firstName, lastName, contractType, qualifications]
+      properties:
+        workerId:       { type: integer }
+        firstName:      { type: string }
+        lastName:       { type: string }
+        contractType:   { $ref: "#/components/schemas/ContractType" }
+        qualifications: { type: array, items: { $ref: "#/components/schemas/QualificationRef" } }
+
+    WorkerDetail:
+      type: object
+      required: [workerId, firstName, lastName, contractType, contractHoursPerWeek, hourlyRateCents, priorityFactor, language, studentHoursExternalYtd, isActive, qualifications, contactChannels, workedHoursThisWeek]
+      properties:
+        workerId:                { type: integer }
+        firstName:               { type: string }
+        lastName:                { type: string }
+        contractType:            { $ref: "#/components/schemas/ContractType" }
+        contractHoursPerWeek:    { type: number }
+        hourlyRateCents:         { type: integer, minimum: 0, description: "EUR gross per hour, in cents" }
+        priorityFactor:          { type: integer, minimum: 0, maximum: 3, description: "Ranking only; never filters anyone out" }
+        language:                { $ref: "#/components/schemas/Language" }
+        studentHoursExternalYtd: { type: number, minimum: 0, description: "Students only (0 otherwise): hours used this year at other employers" }
+        isActive:                { type: boolean }
+        qualifications:          { type: array, items: { $ref: "#/components/schemas/WorkerQualification" } }
+        contactChannels:         { type: array, items: { $ref: "#/components/schemas/ContactChannel" } }
+        workedHoursThisWeek:     { type: number, readOnly: true, description: "From time entries, current ISO week (Europe/Brussels)" }
+
+    WorkerUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        firstName:               { type: string }
+        lastName:                { type: string }
+        contractType:            { $ref: "#/components/schemas/ContractType" }
+        contractHoursPerWeek:    { type: number, minimum: 0, exclusiveMinimum: true }
+        hourlyRateCents:         { type: integer, minimum: 0 }
+        priorityFactor:          { type: integer, minimum: 0, maximum: 3 }
+        language:                { $ref: "#/components/schemas/Language" }
+        studentHoursExternalYtd: { type: number, minimum: 0 }
+        isActive:                { type: boolean }
+        qualifications:          { type: array, items: { $ref: "#/components/schemas/QualificationAssignment" } }
+        contactChannels:         { type: array, items: { $ref: "#/components/schemas/ContactChannel" } }
+
+    HistoryEntry:
+      type: object
+      required: [occurredAt, actor, action, shiftId, changes]
+      properties:
+        occurredAt: { $ref: "#/components/schemas/Timestamp" }
+        actor:      { type: string, description: "system | manager | bot | worker:<id>" }
+        action:     { $ref: "#/components/schemas/AuditAction" }
+        shiftId:    { type: integer, nullable: true }
+        changes:
+          type: array
+          nullable: true
+          description: Only on worker_updated entries; lists only the fields that changed.
+          items:
+            type: object
+            required: [field, from, to]
+            properties:
+              field: { type: string }
+              from:  { nullable: true, description: "Previous value (any JSON type)" }
+              to:    { nullable: true, description: "New value (any JSON type)" }

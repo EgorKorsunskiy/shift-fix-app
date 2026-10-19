@@ -67,16 +67,20 @@ Build a product that helps fill an unstaffed shift **quickly and legally**.
 - **Multilingual (NL / FR / EN)** across the UI and the messages sent to employees.
 - **Privacy.** Show only the minimum personal data needed. Never show sick-leave reasons or medical details. Candidates should not see each other's data.
 
-### Candidate simplified rule set (to be finalised by the team)
+### Simplified rule set
 
-These are starting points loosely based on the EU Working Time Directive and common Belgian practice. They are not legal advice, and the final values should live in config:
+These rules are loosely based on the EU Working Time Directive and common Belgian practice. They are not legal advice. The final values live in `rules.json`; see `domain.md` → "Labour rules config".
 
-- Required qualification or role must match the shift.
-- Minimum **11 hours rest** between the end of one shift and the start of the next.
-- Max weekly hours per contract, for example full-time 38h normal and part-time per contract. Keep an absolute cap, such as 48h, as an extra safeguard.
-- Max daily working time, for example ≤ 9–10h per day.
-- Student hour quota: a yearly cap (Belgian student quota, value to confirm) and possibly a weekly cap.
-- No overlap with an existing shift, leave or recorded unavailability.
+- The worker must hold the qualification the shift requires, and it must not be expired.
+- At least **11 hours of rest** between the end of one shift and the start of the next.
+- Weekly hours:
+  - full-time: at most 40h
+  - part-time: at most their contract hours + 4h
+  - students: at most 20h
+  - everyone: an absolute cap of 48h
+- At most 9h of work per day.
+- Student yearly quota: 650h, counted across all employers (value to confirm).
+- No overlap with an existing shift, absence (sick, vacation) or recorded unavailability.
 
 ### Demo checklist
 

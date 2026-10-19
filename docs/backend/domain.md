@@ -1,6 +1,6 @@
 # ShiftFix: Domain & Database Schema
 
-Backend data model for ShiftFix, on **SQLite**. See `context.md` for the problem statement.
+Backend data model for ShiftFix, on **SQLite**. See `context.md` for the problem statement. The HTTP API built on this model is specified in [`../frontend/shiftfix-openapi.yaml`](../frontend/shiftfix-openapi.yaml), with a readable version in [`../frontend/shiftfix-api-schemas.md`](../frontend/shiftfix-api-schemas.md). The API uses the same timestamp format and enum values. It names fields in camelCase, and its IDs are the integer primary keys.
 
 ## Conventions
 
@@ -194,7 +194,7 @@ CREATE TABLE offer (
   wave         INTEGER NOT NULL,   -- batch number in the offer cascade, starting at 1
   status       TEXT    NOT NULL,   -- offer_status
   channel      TEXT,               -- channel_type the offer was sent through
-  score        REAL,               -- ranking score when sent
+  score        REAL,               -- ranking score 0..100 when sent
   sent_at      TEXT    NOT NULL,
   expires_at   TEXT,
   responded_at TEXT,
@@ -206,7 +206,11 @@ CREATE INDEX ix_offer_worker_status ON offer(worker_id, status);
 
 ### `audit_event` (append-only)
 
-Records every action that matters. `shift_assigned` events carry the full rule-check results and the `rules.json` version in `payload`.
+Records every action that matters. The `payload` depends on the event:
+- `shift_assigned`: the full rule-check results and the `rules.json` version.
+- `worker_updated`: the changed fields, as `[{field, from, to}]`.
+
+A worker's audit entries make up their history in the API.
 
 ```sql
 CREATE TABLE audit_event (
@@ -214,7 +218,8 @@ CREATE TABLE audit_event (
   occurred_at TEXT    NOT NULL,
   actor       TEXT    NOT NULL,   -- 'system' | 'manager' | 'bot' | 'worker:<id>'
   action      TEXT    NOT NULL,   -- absence_reported, shift_opened, offer_sent, offer_declined,
-                                  -- offer_accepted, shift_assigned, assignment_rejected
+                                  -- offer_accepted, shift_assigned, assignment_rejected,
+                                  -- worker_updated
   shift_id    INTEGER REFERENCES shift(id),
   worker_id   INTEGER REFERENCES worker(id),
   payload     TEXT                -- JSON
@@ -300,9 +305,9 @@ Intervals are clipped to the window, and day and week boundaries are taken in `E
 
 ## Lifecycle: "07:00 sick, shift at 09:00"
 
-1. Insert an `absence` row. The worker's overlapping `scheduled` shifts become `open` with `worker_id = NULL`. An `absence_reported` event and a `shift_opened` event are written to the audit log; `shift_opened` keeps the original assignee in its payload.
+1. Insert an `absence` row, reported either by the manager (`POST /absences`) or through the bot. The worker's overlapping `scheduled` shifts become `open` with `worker_id = NULL`. An `absence_reported` event and a `shift_opened` event are written to the audit log; `shift_opened` keeps the original assignee in its payload.
 2. Candidates are evaluated: hard rules filter, then the remaining candidates are ranked.
-3. Insert the `offer` rows for wave 1 (`pending`) and write an `offer_sent` event.
+3. The manager sends offers. Insert `pending` `offer` rows for the next wave and write an `offer_sent` event. The wave is either the top 3 ranked candidates not yet asked, or the candidates the manager picked. Offers go out through the worker's preferred `contact_channel`, in the worker's `language`.
 4. When someone accepts, **one `BEGIN IMMEDIATE` transaction** does the following. Its write lock serialises concurrent accepts.
    1. Re-read the shift and the offer. The shift must still be `open` and the offer still `pending`; otherwise the answer is "already filled".
    2. Re-run all hard rules.
@@ -311,7 +316,7 @@ Intervals are clipped to the window, and day and week boundaries are taken in `E
    5. Write `shift_assigned` with the rule snapshot.
 
    If the re-check fails, roll back and write `assignment_rejected` instead.
-5. A decline sets the offer to `declined`. When every offer in a wave is declined or has expired, the next wave starts.
+5. A decline sets the offer to `declined`. When every offer in a wave is declined or has expired, the next wave starts automatically (top 3 not yet asked).
 
 ## Deliberately not modelled (prototype)
 
